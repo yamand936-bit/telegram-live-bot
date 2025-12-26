@@ -3,9 +3,9 @@ import time
 import os
 
 # ================== ENV ==================
-TELEGRAM_TOKEN = os.environ.get("TELEGRAM_TOKEN")
-CHAT_ID = os.environ.get("CHAT_ID")
-SPORTMONKS_TOKEN = os.environ.get("SPORTMONKS_TOKEN")
+TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
+CHAT_ID = os.getenv("CHAT_ID")
+SPORTMONKS_TOKEN = os.getenv("SPORTMONKS_TOKEN")
 
 BASE_URL = "https://api.sportmonks.com/v3/football"
 
@@ -25,55 +25,50 @@ def get_live_matches():
     r.raise_for_status()
     return r.json()["data"]
 
-def shots_on_target(stats, team_id):
+def get_stat(stats, name):
     for s in stats:
-        if s["team_id"] == team_id and s["type"]["name"] == "Shots On Target":
+        if s["type"]["name"] == name:
             return s["value"]
-    return "?"
+    return 0
 
 # ================== START ==================
 send_message("🤖 البوت شغّال باستخدام SportMonks")
 
-last_sent = {}
+sent = set()
 
 while True:
     try:
         matches = get_live_matches()
 
         for match in matches:
-            fixture_id = match["id"]
-            league = match["league"]["name"]
-
-            home = match["participants"][0]
-            away = match["participants"][1]
-
-            gh = match["scores"]["localteam_score"]
-            ga = match["scores"]["visitorteam_score"]
-
-            minute = match["time"]["minute"]
-
-            hs = shots_on_target(match["statistics"], home["id"])
-            as_ = shots_on_target(match["statistics"], away["id"])
-
-            state = f"{gh}-{ga}-{hs}-{as_}"
-            if last_sent.get(fixture_id) == state:
+            match_id = match["id"]
+            if match_id in sent:
                 continue
 
-            last_sent[fixture_id] = state
+            home = match["participants"][0]["name"]
+            away = match["participants"][1]["name"]
+            minute = match["time"]["minute"]
+
+            home_stats = match["statistics"]["home"]
+            away_stats = match["statistics"]["away"]
+
+            hs = get_stat(home_stats, "Shots On Target")
+            as_ = get_stat(away_stats, "Shots On Target")
 
             msg = (
-                f"⚽ {league}\n"
-                f"{home['name']} vs {away['name']}\n"
+                f"⚽ LIVE\n"
+                f"{home} vs {away}\n"
                 f"⏱ {minute}'\n"
-                f"🔢 {gh} - {ga}\n"
                 f"🎯 تسديدات على المرمى:\n"
-                f"{home['name']}: {hs}\n"
-                f"{away['name']}: {as_}"
+                f"{home}: {hs}\n"
+                f"{away}: {as_}"
             )
 
             send_message(msg)
+            sent.add(match_id)
+
+        time.sleep(60)
 
     except Exception as e:
         send_message(f"❌ Error: {e}")
-
-    time.sleep(60)
+        time.sleep(60)
