@@ -1,74 +1,80 @@
-import requests
-import time
 import os
+import time
+import requests
 
-# ================== ENV ==================
+API_KEY = os.getenv("API_KEY")
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
 CHAT_ID = os.getenv("CHAT_ID")
-SPORTMONKS_TOKEN = os.getenv("SPORTMONKS_TOKEN")
 
-BASE_URL = "https://api.sportmonks.com/v3/football"
+# الدوريات المسموحة
+ALLOWED_LEAGUES = [
+    302,  # Saudi Pro League
+    203,  # Turkey Super Lig
+    144,  # Belgium Pro League
+    241,  # England Championship
+    550,  # National League South
+    201,  # Wales Premier League
+    321   # Africa Cup of Nations
+]
 
-# ================== TELEGRAM ==================
 def send_message(text):
     url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
-    requests.post(url, data={"chat_id": CHAT_ID, "text": text})
+    data = {"chat_id": CHAT_ID, "text": text}
+    requests.post(url, data=data)
 
-# ================== SPORTMONKS ==================
 def get_live_matches():
-    url = f"{BASE_URL}/livescores"
-    params = {
-        "api_token": SPORTMONKS_TOKEN,
-        "include": "participants;statistics"
-    }
-    r = requests.get(url, params=params, timeout=20)
-    r.raise_for_status()
-    return r.json()["data"]
+    url = (
+        "https://api.sportmonks.com/v3/football/livescores"
+        f"?api_token={API_KEY}&include=participants;statistics"
+    )
+    response = requests.get(url, timeout=20)
+    response.raise_for_status()
+    return response.json()
 
-def get_stat(stats, name):
-    for s in stats:
-        if s["type"]["name"] == name:
-            return s["value"]
-    return 0
+def extract_shots_on_target(stats):
+    home = away = 0
+    for stat in stats:
+        if stat.get("type", {}).get("name") == "Shots On Target":
+            if stat.get("participant_id") == stat.get("fixture", {}).get("home_id"):
+                home = stat.get("value", 0)
+            else:
+                away = stat.get("value", 0)
+    return home, away
 
-# ================== START ==================
-send_message("🤖 البوت شغّال باستخدام SportMonks")
+def main():
+    send_message("🤖 البوت شغّال باستخدام SportMonks")
 
-sent = set()
+    while True:
+        try:
+            data = get_live_matches()
+            matches = data.get("data", [])
 
-while True:
-    try:
-        matches = get_live_matches()
-
-        for match in matches:
-            match_id = match["id"]
-            if match_id in sent:
+            if not matches:
+                time.sleep(60)
                 continue
 
-            home = match["participants"][0]["name"]
-            away = match["participants"][1]["name"]
-            minute = match["time"]["minute"]
+            for match in matches:
+                league_id = match.get("league_id")
+                if league_id not in ALLOWED_LEAGUES:
+                    continue
 
-            home_stats = match["statistics"]["home"]
-            away_stats = match["statistics"]["away"]
+                name = match.get("name", "مباراة")
+                stats = match.get("statistics", [])
+                home_shots, away_shots = extract_shots_on_target(stats)
 
-            hs = get_stat(home_stats, "Shots On Target")
-            as_ = get_stat(away_stats, "Shots On Target")
+                msg = (
+                    f"⚽ {name}\n"
+                    f"🎯 تسديدات على المرمى:\n"
+                    f"🏠 صاحب الأرض: {home_shots}\n"
+                    f"✈️ الضيف: {away_shots}"
+                )
+                send_message(msg)
 
-            msg = (
-                f"⚽ LIVE\n"
-                f"{home} vs {away}\n"
-                f"⏱ {minute}'\n"
-                f"🎯 تسديدات على المرمى:\n"
-                f"{home}: {hs}\n"
-                f"{away}: {as_}"
-            )
+            time.sleep(60)
 
-            send_message(msg)
-            sent.add(match_id)
+        except Exception as e:
+            send_message(f"❌ Error: {e}")
+            time.sleep(60)
 
-        time.sleep(60)
-
-    except Exception as e:
-        send_message(f"❌ Error: {e}")
-        time.sleep(60)
+if __name__ == "__main__":
+    main()
