@@ -8,7 +8,7 @@ API_KEY = os.environ.get("API_KEY")
 
 headers = {"x-apisports-key": API_KEY}
 
-TOP_LEAGUES = [39, 140, 135, 78, 61, 188, 307, 203, 308, 204, 144, 6, 40, 154, 153]
+TOP_LEAGUES = [39, 140, 135, 78, 61, 188, 307, 203, 308, 204, 144, 6, 40, 154, 153, 41, 42, 43]
 
 last_state = {}
 
