@@ -1,28 +1,23 @@
 import os
 import requests
-import time
+from telegram import Bot
+from telegram.constants import ParseMode
 
-# ================== ENV VARIABLES ==================
-SPORTMONKS_API_KEY = os.getenv("SPORTMONKS_API_KEY")
+# ================= ENV =================
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
 CHAT_ID = os.getenv("CHAT_ID")
+SPORTMONKS_API_KEY = os.getenv("SPORTMONKS_API_KEY")
 
-if not SPORTMONKS_API_KEY:
-    raise ValueError("❌ SPORTMONKS_API_KEY is missing")
+if not TELEGRAM_TOKEN or not CHAT_ID or not SPORTMONKS_API_KEY:
+    raise ValueError("❌ Missing environment variables")
 
-# ================== TELEGRAM ==================
-def send_telegram(message):
-    url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
-    payload = {
-        "chat_id": CHAT_ID,
-        "text": message,
-        "parse_mode": "HTML"
-    }
-    requests.post(url, json=payload)
+bot = Bot(token=TELEGRAM_TOKEN)
 
-# ================== SPORTMONKS ==================
+BASE_URL = "https://api.sportmonks.com/v3/football"
+
+# ================= HELPERS =================
 def get_live_matches():
-    url = "https://api.sportmonks.com/v3/football/livescores"
+    url = f"{BASE_URL}/livescores"
     params = {
         "api_token": SPORTMONKS_API_KEY,
         "include": "participants;statistics"
@@ -31,48 +26,59 @@ def get_live_matches():
     r.raise_for_status()
     return r.json().get("data", [])
 
-def extract_stat(stats, name):
+
+def parse_stats(stats):
+    data = {
+        "shots_on": 0,
+        "shots_off": 0,
+        "corners": 0,
+        "possession": 0
+    }
+
     for s in stats:
-        if s.get("type", {}).get("name") == name:
-            return s.get("value", 0)
-    return 0
+        if s["type"]["name"] == "Shots On Target":
+            data["shots_on"] = s["value"]
+        elif s["type"]["name"] == "Shots Off Target":
+            data["shots_off"] = s["value"]
+        elif s["type"]["name"] == "Corners":
+            data["corners"] = s["value"]
+        elif s["type"]["name"] == "Ball Possession":
+            data["possession"] = s["value"]
 
-# ================== MAIN LOOP ==================
-send_telegram("🤖 البوت شغّال باستخدام SportMonks (Advanced Plan)")
+    return data
 
-while True:
-    try:
-        matches = get_live_matches()
 
-        if not matches:
-            time.sleep(60)
-            continue
+# ================= MAIN =================
+def send_live_stats():
+    matches = get_live_matches()
 
-        for match in matches:
-            home = match["participants"][0]["name"]
-            away = match["participants"][1]["name"]
+    if not matches:
+        bot.send_message(chat_id=CHAT_ID, text="⚽ لا توجد مباريات مباشرة حالياً")
+        return
 
-            stats = match.get("statistics", [])
+    for match in matches:
+        home = match["participants"][0]["name"]
+        away = match["participants"][1]["name"]
 
-            shots_on = extract_stat(stats, "Shots On Target")
-            shots_off = extract_stat(stats, "Shots Off Target")
-            corners = extract_stat(stats, "Corners")
-            possession = extract_stat(stats, "Ball Possession")
+        stats = parse_stats(match.get("statistics", []))
 
-            message = (
-                f"⚽ <b>مباراة مباشرة</b>\n\n"
-                f"{home} 🆚 {away}\n\n"
-                f"🎯 تسديدات على المرمى: {shots_on}\n"
-                f"❌ تسديدات خارج: {shots_off}\n"
-                f"🚩 ركنيات: {corners}\n"
-                f"📊 استحواذ: {possession}%"
-            )
+        message = f"""
+⚽ **مباراة مباشرة**
+{home} 🆚 {away}
 
-            send_telegram(message)
-            time.sleep(5)
+🎯 تسديدات على المرمى: {stats['shots_on']}
+❌ تسديدات خارج: {stats['shots_off']}
+🚩 ركنيات: {stats['corners']}
+📊 استحواذ: {stats['possession']}%
+"""
 
-        time.sleep(60)
+        bot.send_message(
+            chat_id=CHAT_ID,
+            text=message,
+            parse_mode=ParseMode.MARKDOWN
+        )
 
-    except Exception as e:
-        send_telegram(f"❌ Error: {e}")
-        time.sleep(60)
+
+if __name__ == "__main__":
+    bot.send_message(chat_id=CHAT_ID, text="🤖 البوت شغّال باستخدام SportMonks (إحصائيات)")
+    send_live_stats()
