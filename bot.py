@@ -1,71 +1,41 @@
 import os
 import requests
-from telegram import Bot
 
-# ===== ENV =====
-TOKEN = os.getenv("TELEGRAM_TOKEN")
-CHAT_ID = os.getenv("CHAT_ID")
 SPORTMONKS_API_KEY = os.getenv("SPORTMONKS_API_KEY")
 
-bot = Bot(token=TOKEN)
+if not SPORTMONKS_API_KEY:
+    raise ValueError("❌ SPORTMONKS_API_KEY غير موجود")
 
-# ===== CONSTANTS =====
-LEAGUE_ID = 550  # 🇹🇷 TFF 1. Lig
-API_URL = "https://api.sportmonks.com/v3/football/livescores"
+URL = "https://api.sportmonks.com/v3/football/livescores"
 
+params = {
+    "api_token": SPORTMONKS_API_KEY,
+    "filters": "league_id:550",
+    "include": "participants"
+}
 
-def get_live_scores():
-    params = {
-        "api_token": SPORTMONKS_API_KEY
-    }
+response = requests.get(URL, params=params)
+response.raise_for_status()
 
-    response = requests.get(API_URL, params=params, timeout=20)
-    response.raise_for_status()
-    data = response.json().get("data", [])
+data = response.json().get("data", [])
 
-    matches = []
+if not data:
+    print("🇹🇷 لا توجد مباريات مباشرة حاليًا في الدوري التركي الدرجة الأولى")
+    exit()
 
-    for match in data:
-        league = match.get("league", {})
-        if league.get("id") != LEAGUE_ID:
-            continue
+print("🇹🇷 مباريات الدوري التركي الدرجة الأولى (مباشر):\n")
 
-        participants = match.get("participants", [])
-        if len(participants) < 2:
-            continue
+for match in data:
+    teams = {p["meta"]["location"]: p["name"] for p in match["participants"]}
+    home = teams.get("home", "؟")
+    away = teams.get("away", "؟")
 
-        home = participants[0]
-        away = participants[1]
+    score = match.get("scores", {})
+    home_goals = score.get("home", 0)
+    away_goals = score.get("away", 0)
 
-        score = match.get("scores", {})
-        home_goals = score.get("home", 0)
-        away_goals = score.get("away", 0)
+    state = match.get("state", {}).get("name", "غير معروف")
 
-        matches.append(
-            f"⚽ {home['name']} {home_goals} - {away_goals} {away['name']}"
-        )
-
-    return matches
-
-
-def main():
-    try:
-        matches = get_live_scores()
-
-        if not matches:
-            message = "🇹🇷 لا توجد مباريات مباشرة حاليًا في الدوري التركي الدرجة الأولى"
-        else:
-            message = "🇹🇷 مباريات مباشرة – الدوري التركي الدرجة الأولى:\n\n"
-            message += "\n".join(matches)
-
-        bot.send_message(chat_id=CHAT_ID, text=message)
-
-    except Exception as e:
-        bot.send_message(
-            chat_id=CHAT_ID,
-            text=f"❌ خطأ:\n{str(e)}"
-        )
-
-
-if __name__ == "__main__":
-    main()
+    print(f"{home} {home_goals} - {away_goals} {away}")
+    print(f"الحالة: {state}")
+    print("-" * 30)
