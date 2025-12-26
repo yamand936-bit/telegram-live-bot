@@ -14,8 +14,8 @@ from telegram.ext import (
     ContextTypes
 )
 
-BOT_TOKEN = os.environ["TELEGRAM_BOT_TOKEN"]
-SPORTMONKS_API_KEY = os.environ["SPORTMONKS_API_KEY"]
+BOT_TOKEN = os.environ["8504344551:AAEINvlgMKfITy7ZQCTWEUyNN0VVsysmiRE"]
+SPORTMONKS_API_KEY = os.environ["rzueqQlyA4BG6twcIzOZB1DNNCX7Z7zOGc8FWicWMZ0sQV0ABCaHiYHLhCUL"]
 
 LEAGUES = {
     "🏴 Premier League": 8,
