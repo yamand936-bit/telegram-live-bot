@@ -2,19 +2,15 @@ import os
 import time
 import requests
 
-# ======================
-# ENV VARIABLES
-# ======================
-SPORTMONKS_API_TOKEN = os.getenv("SPORTMONKS_API_TOKEN")
+# ====== ENV VARIABLES ======
+SPORTMONKS_API_KEY = os.getenv("API_KEY")
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
 CHAT_ID = os.getenv("CHAT_ID")
 
-if not SPORTMONKS_API_TOKEN:
-    raise ValueError("❌ SPORTMONKS_API_TOKEN is missing")
+if not SPORTMONKS_API_KEY:
+    raise ValueError("❌ SPORTMONKS_API_KEY is missing")
 
-# ======================
-# TELEGRAM
-# ======================
+# ====== TELEGRAM ======
 def send_message(text):
     url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
     data = {
@@ -23,55 +19,37 @@ def send_message(text):
     }
     requests.post(url, data=data)
 
-# ======================
-# SPORTMONKS
-# ======================
+# ====== SPORTMONKS ======
 def get_live_matches():
     url = "https://api.sportmonks.com/v3/football/livescores"
     params = {
-        "api_token": SPORTMONKS_API_TOKEN,
-        "include": "participants;statistics"
+        "api_token": SPORTMONKS_API_KEY,
+        "include": "participants"
     }
-    response = requests.get(url, params=params)
-    response.raise_for_status()
-    return response.json()
+    r = requests.get(url, params=params)
+    r.raise_for_status()
+    return r.json().get("data", [])
 
-def parse_stats(match):
-    stats = match.get("statistics", [])
-    home_shots = away_shots = 0
-
-    for stat in stats:
-        if stat["type"]["code"] == "shots_on_target":
-            if stat["participant"]["meta"]["location"] == "home":
-                home_shots = stat["data"]["value"]
-            else:
-                away_shots = stat["data"]["value"]
-
-    return home_shots, away_shots
-
-# ======================
-# MAIN LOOP
-# ======================
+# ====== MAIN LOOP ======
 send_message("🤖 البوت شغّال باستخدام SportMonks")
 
 while True:
     try:
-        data = get_live_matches()
+        matches = get_live_matches()
 
-        for match in data.get("data", []):
-            home = match["participants"][0]["name"]
-            away = match["participants"][1]["name"]
+        if not matches:
+            send_message("⚽ لا توجد مباريات مباشرة الآن")
+        else:
+            for match in matches:
+                name = match.get("name", "مباراة")
+                minute = match.get("time", {}).get("minute", "؟")
+                result = match.get("result_info", "—")
 
-            home_shots, away_shots = parse_stats(match)
-
-            msg = (
-                f"⚽ {home} vs {away}\n"
-                f"🎯 تسديدات على المرمى:\n"
-                f"{home}: {home_shots}\n"
-                f"{away}: {away_shots}"
-            )
-
-            send_message(msg)
+                msg = f"""⚽ {name}
+⏱ الدقيقة: {minute}
+📊 النتيجة: {result}
+"""
+                send_message(msg)
 
         time.sleep(60)
 
