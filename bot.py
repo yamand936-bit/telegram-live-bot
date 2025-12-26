@@ -1,6 +1,6 @@
 import os
-import requests
 import asyncio
+import requests
 from telegram import Bot
 
 # ================== ENV ==================
@@ -8,29 +8,31 @@ TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
 CHAT_ID = os.getenv("CHAT_ID")
 SPORTMONKS_API_KEY = os.getenv("SPORTMONKS_API_KEY")
 
-if not TELEGRAM_TOKEN or not CHAT_ID or not SPORTMONKS_API_KEY:
+if not all([TELEGRAM_TOKEN, CHAT_ID, SPORTMONKS_API_KEY]):
     raise ValueError("❌ Missing environment variables")
 
 bot = Bot(token=TELEGRAM_TOKEN)
 
-BASE_URL = "https://api.sportmonks.com/v3/football"
+# ================== CONSTANTS ==================
+BASE_URL = "https://api.sportmonks.com/v3/football/livescores"
+
+# ⚽ الدوري التركي الدرجة الأولى (TFF 1. Lig)
+TURKEY_TFF1_LEAGUE_ID = 550
 
 # ================== HELPERS ==================
 def get_live_matches():
-    url = f"{BASE_URL}/livescores"
     params = {
         "api_token": SPORTMONKS_API_KEY,
-        "filters[league_id]": 550,  # 🇹🇷 TFF 1. Lig
-        "include": "participants;statistics"
+        "include": "participants;statistics",
+        "filters[league_id]": TURKEY_TFF1_LEAGUE_ID
     }
 
-    r = requests.get(url, params=params, timeout=20)
+    r = requests.get(BASE_URL, params=params, timeout=30)
     r.raise_for_status()
     return r.json().get("data", [])
 
-
-def parse_stats(statistics):
-    result = {
+def parse_statistics(statistics):
+    stats = {
         "shots_on_target": 0,
         "shots_off_target": 0,
         "corners": 0,
@@ -38,62 +40,69 @@ def parse_stats(statistics):
     }
 
     for s in statistics:
-        # حماية من الأخطاء
-        stat_type = s.get("type")
-        if not stat_type:
-            continue
+        type_info = s.get("type", {})
+        code = type_info.get("code")
 
-        code = stat_type.get("code")
         value = s.get("value", 0)
+        if isinstance(value, dict):
+            value = value.get("total", 0)
 
         if code == "shots_on_target":
-            result["shots_on_target"] += value
+            stats["shots_on_target"] = value
         elif code == "shots_off_target":
-            result["shots_off_target"] += value
+            stats["shots_off_target"] = value
         elif code == "corners":
-            result["corners"] += value
-        elif code == "possession":
-            result["possession"] += value
+            stats["corners"] = value
+        elif code == "ball_possession":
+            stats["possession"] = value
 
-    return result
+    return stats
 
+def format_match(match):
+    teams = match.get("participants", [])
+    home = teams[0]["name"] if len(teams) > 0 else "Home"
+    away = teams[1]["name"] if len(teams) > 1 else "Away"
 
+    stats = parse_statistics(match.get("statistics", []))
+
+    message = (
+        f"⚽ مباراة مباشرة\n"
+        f"{home} 🆚 {away}\n\n"
+        f"🎯 تسديدات على المرمى: {stats['shots_on_target']}\n"
+        f"❌ تسديدات خارج: {stats['shots_off_target']}\n"
+        f"🚩 ركنيات: {stats['corners']}\n"
+        f"📊 استحواذ: {stats['possession']}%\n"
+    )
+    return message
+
+# ================== MAIN LOOP ==================
 async def send_live_stats():
-    matches = get_live_matches()
+    try:
+        matches = get_live_matches()
 
-    if not matches:
-        await bot.send_message(chat_id=CHAT_ID, text="⚽ لا توجد مباريات مباشرة في الدوري التركي الدرجة الأولى")
-        return
+        if not matches:
+            await bot.send_message(
+                chat_id=CHAT_ID,
+                text="🤖 لا توجد مباريات مباشرة الآن (الدوري التركي الدرجة الأولى)"
+            )
+            return
 
-    for match in matches:
-        teams = match.get("participants", [])
-        stats = match.get("statistics", [])
+        for match in matches:
+            msg = format_match(match)
+            await bot.send_message(chat_id=CHAT_ID, text=msg)
 
-        if len(teams) < 2:
-            continue
+    except Exception as e:
+        await bot.send_message(chat_id=CHAT_ID, text=f"❌ Error: {e}")
 
-        home = teams[0]["name"]
-        away = teams[1]["name"]
-
-        parsed = parse_stats(stats)
-
-        message = (
-            f"⚽ مباراة مباشرة\n"
-            f"{home} 🆚 {away}\n\n"
-            f"🎯 تسديدات على المرمى: {parsed['shots_on_target']}\n"
-            f"❌ تسديدات خارج: {parsed['shots_off_target']}\n"
-            f"🚩 ركنيات: {parsed['corners']}\n"
-            f"📊 استحواذ: {parsed['possession']}%\n"
-        )
-
-        await bot.send_message(chat_id=CHAT_ID, text=message)
-
-
-# ================== MAIN ==================
 async def main():
-    await bot.send_message(chat_id=CHAT_ID, text="🤖 البوت يعمل – تجربة الدوري التركي الدرجة الأولى")
-    await send_live_stats()
+    await bot.send_message(
+        chat_id=CHAT_ID,
+        text="🤖 اختبار الدوري التركي الدرجة الأولى – البوت يعمل"
+    )
 
+    while True:
+        await send_live_stats()
+        await asyncio.sleep(60)
 
 if __name__ == "__main__":
     asyncio.run(main())
