@@ -2,41 +2,36 @@ import requests
 import time
 import os
 
-# ============ ENV ============
+# ================== ENV ==================
 TELEGRAM_TOKEN = os.environ.get("TELEGRAM_TOKEN")
 CHAT_ID = os.environ.get("CHAT_ID")
 SPORTMONKS_TOKEN = os.environ.get("SPORTMONKS_TOKEN")
 
 BASE_URL = "https://api.sportmonks.com/v3/football"
 
-HEADERS = {
-    "Authorization": f"Bearer {SPORTMONKS_TOKEN}"
-}
-
-# ============ FUNCTIONS ============
+# ================== TELEGRAM ==================
 def send_message(text):
     url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
     requests.post(url, data={"chat_id": CHAT_ID, "text": text})
 
-
+# ================== SPORTMONKS ==================
 def get_live_matches():
-    url = f"{BASE_URL}/fixtures"
+    url = f"{BASE_URL}/livescores"
     params = {
-        "include": "participants;statistics",
-        "filters": "state_id:2"  # LIVE ONLY
+        "api_token": SPORTMONKS_TOKEN,
+        "include": "participants;statistics"
     }
-    r = requests.get(url, headers=HEADERS, params=params)
-    return r.json().get("data", [])
+    r = requests.get(url, params=params, timeout=20)
+    r.raise_for_status()
+    return r.json()["data"]
 
-
-def get_shots(stats, team_id):
-    for stat in stats:
-        if stat["type"]["name"] == "Shots On Target" and stat["participant_id"] == team_id:
-            return stat["value"]
+def shots_on_target(stats, team_id):
+    for s in stats:
+        if s["team_id"] == team_id and s["type"]["name"] == "Shots On Target":
+            return s["value"]
     return "?"
 
-
-# ============ START ============
+# ================== START ==================
 send_message("🤖 البوت شغّال باستخدام SportMonks")
 
 last_sent = {}
@@ -45,35 +40,35 @@ while True:
     try:
         matches = get_live_matches()
 
-        for m in matches:
-            fixture_id = m["id"]
+        for match in matches:
+            fixture_id = match["id"]
+            league = match["league"]["name"]
 
-            home = m["participants"][0]["name"]
-            away = m["participants"][1]["name"]
+            home = match["participants"][0]
+            away = match["participants"][1]
 
-            home_id = m["participants"][0]["id"]
-            away_id = m["participants"][1]["id"]
+            gh = match["scores"]["localteam_score"]
+            ga = match["scores"]["visitorteam_score"]
 
-            minute = m["time"]["minute"] if m.get("time") else "?"
+            minute = match["time"]["minute"]
 
-            stats = m.get("statistics", [])
+            hs = shots_on_target(match["statistics"], home["id"])
+            as_ = shots_on_target(match["statistics"], away["id"])
 
-            hs = get_shots(stats, home_id)
-            as_ = get_shots(stats, away_id)
-
-            state = f"{hs}-{as_}-{minute}"
+            state = f"{gh}-{ga}-{hs}-{as_}"
             if last_sent.get(fixture_id) == state:
                 continue
 
             last_sent[fixture_id] = state
 
             msg = (
-                f"⚽ LIVE\n"
-                f"{home} vs {away}\n"
+                f"⚽ {league}\n"
+                f"{home['name']} vs {away['name']}\n"
                 f"⏱ {minute}'\n"
+                f"🔢 {gh} - {ga}\n"
                 f"🎯 تسديدات على المرمى:\n"
-                f"{home}: {hs}\n"
-                f"{away}: {as_}"
+                f"{home['name']}: {hs}\n"
+                f"{away['name']}: {as_}"
             )
 
             send_message(msg)
