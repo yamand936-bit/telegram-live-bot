@@ -2,12 +2,16 @@ import os
 import time
 import requests
 
-# ================== ENV VARIABLES ==================
-API_KEY = os.getenv("API_KEY")
+# ====== ENV VARIABLES ======
+SPORTMONKS_API_KEY = os.getenv("SPORTMONKS_API_KEY")
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
 CHAT_ID = os.getenv("CHAT_ID")
 
-# ================== TELEGRAM ==================
+# ====== CHECK ======
+if not SPORTMONKS_API_KEY:
+    raise ValueError("❌ SPORTMONKS_API_KEY is missing")
+
+# ====== TELEGRAM ======
 def send_message(text):
     url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
     payload = {
@@ -17,24 +21,40 @@ def send_message(text):
     }
     requests.post(url, json=payload)
 
-# ================== SPORTMONKS ==================
+# ====== SPORTMONKS ======
 def get_live_matches():
     url = "https://api.sportmonks.com/v3/football/livescores"
     params = {
-        "api_token": API_KEY,
+        "api_token": SPORTMONKS_API_KEY,
         "include": "participants;statistics"
     }
-    response = requests.get(url, params=params, timeout=30)
+    response = requests.get(url, params=params)
     response.raise_for_status()
-    return response.json().get("data", [])
+    return response.json()["data"]
 
-def get_shots_on_target(stats, team_id):
-    for stat in stats:
-        if stat["team_id"] == team_id and stat["type"]["name"] == "Shots On Target":
-            return stat["value"]
-    return 0
+# ====== FORMAT ======
+def format_match(match):
+    home = match["participants"][0]["name"]
+    away = match["participants"][1]["name"]
 
-# ================== MAIN LOOP ==================
+    stats = match.get("statistics", [])
+    shots_home = shots_away = "?"
+
+    for s in stats:
+        if s["type"]["name"] == "Shots On Target":
+            if s["participant_id"] == match["participants"][0]["id"]:
+                shots_home = s["data"]["value"]
+            else:
+                shots_away = s["data"]["value"]
+
+    return (
+        f"⚽ <b>{home} vs {away}</b>\n"
+        f"🎯 تسديدات على المرمى:\n"
+        f"{home}: {shots_home}\n"
+        f"{away}: {shots_away}"
+    )
+
+# ====== MAIN LOOP ======
 send_message("🤖 البوت شغّال باستخدام SportMonks")
 
 while True:
@@ -42,30 +62,12 @@ while True:
         matches = get_live_matches()
 
         if not matches:
-            time.sleep(60)
-            continue
-
-        for match in matches:
-            if "statistics" not in match or not match["statistics"]:
-                continue
-
-            home = match["participants"][0]
-            away = match["participants"][1]
-
-            home_sot = get_shots_on_target(match["statistics"], home["id"])
-            away_sot = get_shots_on_target(match["statistics"], away["id"])
-
-            message = (
-                f"🏟 <b>{home['name']} vs {away['name']}</b>\n"
-                f"🎯 تسديدات على المرمى:\n"
-                f"🔵 {home['name']}: {home_sot}\n"
-                f"🔴 {away['name']}: {away_sot}"
-            )
-
-            send_message(message)
-
-        time.sleep(60)
+            send_message("⏸️ لا توجد مباريات مباشرة الآن")
+        else:
+            for match in matches:
+                send_message(format_match(match))
 
     except Exception as e:
-        send_message(f"❌ Error: {str(e)}")
-        time.sleep(60)
+        send_message(f"❌ Error: {e}")
+
+    time.sleep(60)
