@@ -49,8 +49,10 @@ while True:
         gh = match["goals"]["home"]
         ga = match["goals"]["away"]
 
-        stats = get_statistics(fixture_id)
-
+stats = []
+if match["league"]["id"] in STATS_LEAGUES:
+    stats = get_statistics(fixture_id)
+    
         if stats:
             hs = shots_on_target(stats[0]["statistics"])
             as_ = shots_on_target(stats[1]["statistics"])
