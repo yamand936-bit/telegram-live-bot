@@ -1,9 +1,11 @@
 import requests
 import time
 
-TELEGRAM_TOKEN = "8504344551:AAEINvlgMKfITy7ZQCTWEUyNN0VVsysmiRE"
-CHAT_ID = "1375730721"
-API_KEY = "f2dbf064f057c5e705df59bc1ca5cd86"
+import os
+
+TELEGRAM_TOKEN = os.environ.get("TELEGRAM_TOKEN")
+CHAT_ID = os.environ.get("CHAT_ID")
+API_KEY = os.environ.get("API_KEY")
 
 headers = {
     "x-apisports-key": API_KEY
