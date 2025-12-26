@@ -3,14 +3,17 @@ import time
 import requests
 
 # ======================
-# Environment Variables
+# ENV VARIABLES
 # ======================
-SPORTMONKS_API_KEY = os.getenv("API_KEY")
+SPORTMONKS_API_TOKEN = os.getenv("SPORTMONKS_API_TOKEN")
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
 CHAT_ID = os.getenv("CHAT_ID")
 
+if not SPORTMONKS_API_TOKEN:
+    raise ValueError("❌ SPORTMONKS_API_TOKEN is missing")
+
 # ======================
-# Telegram Function
+# TELEGRAM
 # ======================
 def send_message(text):
     url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
@@ -21,22 +24,33 @@ def send_message(text):
     requests.post(url, data=data)
 
 # ======================
-# SportMonks Live Matches
+# SPORTMONKS
 # ======================
 def get_live_matches():
     url = "https://api.sportmonks.com/v3/football/livescores"
-
     params = {
-        "api_token": SPORTMONKS_API_KEY,
+        "api_token": SPORTMONKS_API_TOKEN,
         "include": "participants;statistics"
     }
-
     response = requests.get(url, params=params)
     response.raise_for_status()
     return response.json()
 
+def parse_stats(match):
+    stats = match.get("statistics", [])
+    home_shots = away_shots = 0
+
+    for stat in stats:
+        if stat["type"]["code"] == "shots_on_target":
+            if stat["participant"]["meta"]["location"] == "home":
+                home_shots = stat["data"]["value"]
+            else:
+                away_shots = stat["data"]["value"]
+
+    return home_shots, away_shots
+
 # ======================
-# Main Loop
+# MAIN LOOP
 # ======================
 send_message("🤖 البوت شغّال باستخدام SportMonks")
 
@@ -44,25 +58,20 @@ while True:
     try:
         data = get_live_matches()
 
-        matches = data.get("data", [])
-        if not matches:
-            time.sleep(60)
-            continue
+        for match in data.get("data", []):
+            home = match["participants"][0]["name"]
+            away = match["participants"][1]["name"]
 
-        for match in matches:
-            name = match.get("name", "مباراة")
-            stats = match.get("statistics", [])
+            home_shots, away_shots = parse_stats(match)
 
-            shots_on_target = 0
-            for stat in stats:
-                if stat.get("type", {}).get("name") == "Shots On Target":
-                    shots_on_target = stat.get("total", 0)
+            msg = (
+                f"⚽ {home} vs {away}\n"
+                f"🎯 تسديدات على المرمى:\n"
+                f"{home}: {home_shots}\n"
+                f"{away}: {away_shots}"
+            )
 
-            message = f"""
-⚽ {name}
-🎯 تسديدات على المرمى: {shots_on_target}
-"""
-            send_message(message)
+            send_message(msg)
 
         time.sleep(60)
 
