@@ -2,15 +2,19 @@ import os
 import time
 import requests
 
-# ====== ENV VARIABLES ======
-SPORTMONKS_API_KEY = os.getenv("API_KEY")
+# ======================
+# ENV VARIABLES
+# ======================
+SPORTMONKS_API_KEY = os.getenv("SPORTMONKS_API_KEY")
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
 CHAT_ID = os.getenv("CHAT_ID")
 
 if not SPORTMONKS_API_KEY:
     raise ValueError("❌ SPORTMONKS_API_KEY is missing")
 
-# ====== TELEGRAM ======
+# ======================
+# TELEGRAM
+# ======================
 def send_message(text):
     url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
     data = {
@@ -19,40 +23,38 @@ def send_message(text):
     }
     requests.post(url, data=data)
 
-# ====== SPORTMONKS ======
+# ======================
+# SPORTMONKS
+# ======================
 def get_live_matches():
     url = "https://api.sportmonks.com/v3/football/livescores"
     params = {
         "api_token": SPORTMONKS_API_KEY,
         "include": "participants"
     }
-    r = requests.get(url, params=params)
-    r.raise_for_status()
-    return r.json().get("data", [])
+    response = requests.get(url, params=params, timeout=20)
+    response.raise_for_status()
+    return response.json()
 
-# ====== MAIN LOOP ======
+# ======================
+# MAIN LOOP
+# ======================
 send_message("🤖 البوت شغّال باستخدام SportMonks")
 
 while True:
     try:
-        matches = get_live_matches()
+        data = get_live_matches()
+        matches = data.get("data", [])
 
         if not matches:
-            send_message("⚽ لا توجد مباريات مباشرة الآن")
+            send_message("⏳ لا توجد مباريات حالياً")
         else:
             for match in matches:
-                name = match.get("name", "مباراة")
-                minute = match.get("time", {}).get("minute", "؟")
-                result = match.get("result_info", "—")
-
-                msg = f"""⚽ {name}
-⏱ الدقيقة: {minute}
-📊 النتيجة: {result}
-"""
-                send_message(msg)
-
-        time.sleep(60)
+                home = match["participants"][0]["name"]
+                away = match["participants"][1]["name"]
+                send_message(f"⚽ مباراة مباشرة:\n{home} 🆚 {away}")
 
     except Exception as e:
         send_message(f"❌ Error: {e}")
-        time.sleep(60)
+
+    time.sleep(60)
