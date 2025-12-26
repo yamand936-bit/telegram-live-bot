@@ -47,11 +47,19 @@ while True:
         minute = match["fixture"]["status"]["elapsed"]
 
         gh = match["goals"]["home"]
-        ga = match["goals"]["away"]
+ga = match["goals"]["away"]
 
 stats = []
 if match["league"]["id"] in STATS_LEAGUES:
     stats = get_statistics(fixture_id)
+
+if stats:
+    home_stats = stats[0]["statistics"]
+    away_stats = stats[1]["statistics"]
+    hs = shots_on_target(home_stats)
+    as_ = shots_on_target(away_stats)
+else:
+    hs = as_ = "?"
     
         if stats:
             hs = shots_on_target(stats[0]["statistics"])
