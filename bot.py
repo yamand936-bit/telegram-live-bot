@@ -2,119 +2,80 @@ import requests
 import time
 import os
 
-# ================== ENV VARIABLES ==================
+# ================== ENV ==================
 TELEGRAM_TOKEN = os.environ.get("TELEGRAM_TOKEN")
 CHAT_ID = os.environ.get("CHAT_ID")
-API_KEY = os.environ.get("API_KEY")
+SPORTMONKS_TOKEN = os.environ.get("SPORTMONKS_TOKEN")
 
-# ================== HEADERS ==================
-headers = {
-    "x-apisports-key": API_KEY
-}
-
-# ================== LEAGUES ==================
-# كل الدوريات التي اخترتها
-TOP_LEAGUES = [
-    39,   # Premier League
-    40,   # Championship
-    41,   # National League
-    42,   # National League South
-    110,  # Welsh Premier League
-    140,  # La Liga
-    135,  # Serie A
-    78,   # Bundesliga
-    61,   # Ligue 1
-    188,  # A-League
-    307,  # Saudi Pro League
-    308,  # Saudi First Division
-    203,  # Turkish Super Lig
-    204,  # TFF 1. Lig
-    144,  # Belgian Pro League
-    6     # Africa Cup of Nations
-]
-
-# الدوريات التي نطلب لها إحصائيات فقط
-STATS_LEAGUES = [39, 40, 140, 135, 78, 61, 307, 203]
-
-# ================== MEMORY ==================
-last_state = {}
+BASE_URL = "https://api.sportmonks.com/v3/football"
 
 # ================== FUNCTIONS ==================
 def send_message(text):
     url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
-    requests.post(url, data={"chat_id": CHAT_ID, "text": text})
-
+    requests.post(url, data={
+        "chat_id": CHAT_ID,
+        "text": text
+    })
 
 def get_live_matches():
-    url = "https://v3.football.api-sports.io/fixtures?live=all"
-    r = requests.get(url, headers=headers)
-    return r.json().get("response", [])
+    url = f"{BASE_URL}/fixtures/live"
+    params = {
+        "api_token": SPORTMONKS_TOKEN,
+        "include": "league;participants;statistics"
+    }
+    r = requests.get(url, params=params)
+    return r.json().get("data", [])
 
-
-def get_statistics(fixture_id):
-    url = f"https://v3.football.api-sports.io/fixtures/statistics?fixture={fixture_id}"
-    r = requests.get(url, headers=headers)
-    return r.json().get("response", [])
-
-
-def shots_on_target(stats):
+def get_stat(stats, name):
     for s in stats:
-        if s["type"] == "Shots on Goal":
-            return s["value"] or 0
-    return "?"
+        if s["type"]["name"].lower() == name.lower():
+            return s["data"]["value"]
+    return 0
 
 # ================== START ==================
-send_message("🤖 البوت شغّال (وضع ذكي)")
+send_message("🤖 البوت شغّال باستخدام SportMonks")
+
+last_state = {}
 
 while True:
     matches = get_live_matches()
-    messages = []
+    blocks = []
 
-    for match in matches:
-        league_id = match["league"]["id"]
-        if league_id not in TOP_LEAGUES:
+    for m in matches:
+        league = m["league"]["name"]
+
+        home = m["participants"][0]["name"]
+        away = m["participants"][1]["name"]
+
+        minute = m["time"]["minute"]
+
+        stats = m.get("statistics", [])
+
+        home_goals = get_stat(stats, "Goals")
+        away_goals = get_stat(stats, "Goals")
+
+        home_shots = get_stat(stats, "Shots On Target")
+        away_shots = get_stat(stats, "Shots On Target")
+
+        state = f"{home_goals}-{away_goals}-{home_shots}-{away_shots}"
+        if last_state.get(m["id"]) == state:
             continue
 
-        fixture_id = match["fixture"]["id"]
-        league = match["league"]["name"]
-        home = match["teams"]["home"]["name"]
-        away = match["teams"]["away"]["name"]
-        minute = match["fixture"]["status"]["elapsed"]
-
-        gh = match["goals"]["home"]
-        ga = match["goals"]["away"]
-
-        # ================== STATISTICS ==================
-        hs = as_ = "?"
-
-        if league_id in STATS_LEAGUES:
-            stats = get_statistics(fixture_id)
-            if stats:
-                home_stats = stats[0]["statistics"]
-                away_stats = stats[1]["statistics"]
-                hs = shots_on_target(home_stats)
-                as_ = shots_on_target(away_stats)
-
-        state = f"{gh}-{ga}-{hs}-{as_}"
-        if last_state.get(fixture_id) == state:
-            continue
-
-        last_state[fixture_id] = state
+        last_state[m["id"]] = state
 
         block = (
             f"⚽ {league}\n"
             f"{home} vs {away}\n"
             f"⏱ {minute}'\n"
-            f"🔢 {gh} - {ga}\n"
+            f"🔢 {home_goals} - {away_goals}\n"
             f"🎯 تسديدات على المرمى:\n"
-            f"🥅 {home}: {hs}\n"
-            f"🥅 {away}: {as_}\n"
+            f"🥅 {home}: {home_shots}\n"
+            f"🥅 {away}: {away_shots}\n"
         )
 
-        messages.append(block)
+        blocks.append(block)
 
-    if messages:
-        final_message = "📊 تحديث المباريات المباشرة\n\n" + "\n".join(messages)
-        send_message(final_message)
+    if blocks:
+        send_message("📊 تحديث المباريات المباشرة\n\n" + "\n".join(blocks))
 
     time.sleep(60)
